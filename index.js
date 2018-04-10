@@ -59,17 +59,9 @@ Promise.resolve()
 // ROUTES
 app.get('/films/:id/recommendations', getFilmRecommendations);
 app.get('*', (req, res, next) => {
-	const error = new Error('invalid route');
+	const error = new Error('invalid route!');
 	error.httpStatusCode = 404;
 	return next(error);
-});
-
-// ERROR HANDLING MIDDLEWARE
-app.use(function(err, req, res, next) {
-	console.error(err.stack);
-	if (err.status === 422) {
-		res.status(err.httpStatusCode).send(err.message || 'message: key missing');
-	} else if (err.status === 404) res.status(err.httpStatusCode).send({ message: err.message });
 });
 
 // ROUTE HANDLER
@@ -83,43 +75,58 @@ function getFilmRecommendations(req, res, next) {
 		}
 	};
 
-	// SET OFFSET + LIMIT
+	// MOVIE ID SANITIZATION
 	if (isNaN(parseInt(req.params.id, 10))) {
 		const error = new Error('invalid movie id');
 		error.httpStatusCode = 422;
 		return next(error);
-		res.status(422).json({
-			message: 'bad id'
-		});
-	}
-	if (isNaN(parseInt(req.params.id, 10))) {
-		const error = new Error('invalid movie id');
-		error.httpStatusCode = 422;
-		return next(error);
-		res.status(422).json({
-			message: 'bad id'
-		});
 	}
 
-	const offset = parseInt(req.query.offset);
-	if (offset >= 0) response.meta.offset = offset;
-
+	// LIMIT/OFFSET ERROR CATCHING + SET
 	if (req.query.limit) {
-		const limit = parseInt(req.query.limit);
+		let limit = parseInt(req.query.limit, 10);
+		if (isNaN(limit)) {
+			const error = new Error('invalid limit');
+			error.httpStatusCode = 422;
+			return next(error);
+		}
 		if (limit >= 0) response.meta.limit = limit;
+	}
+
+	if (req.query.offset) {
+		let offset = parseInt(req.query.offset, 10);
+		if (isNaN(offset)) {
+			const error = new Error('invalid offset');
+			error.httpStatusCode = 422;
+			return next(error);
+		}
+		if (offset >= 0) response.meta.offset = offset;
 	}
 
 	// FETCH FILM FROM LOCAL DB
 	Film.findById(req.params.id).then(film => {
-		if (typeof film == undefined) {
-			const error = new Error({ message: 'no film with that id' });
+		if (film === null) {
+			const error = new Error('no film with that id');
 			error.httpStatusCode = 422;
 			return next(error);
 		}
-		response.recommendations.push(film.dataValues);
-		console.log(response);
-		return response;
+		Genre.findById(film.genre_id).then(genre => {
+			if (genre === null) {
+				const error = new Error('something is wrong with the genre lookup');
+				error.httpStatusCode = 422;
+				return next(error);
+			}
+			console.log(genre.dataValues);
+			response.recommendations.push(genre.dataValues);
+			res.json(response);
+		});
 	});
 }
+
+// ERROR HANDLING MIDDLEWARE
+app.use(function(err, req, res, next) {
+	res.status(err.httpStatusCode || 500);
+	res.send({ message: err.message || 'key missing' });
+});
 
 module.exports = app;
