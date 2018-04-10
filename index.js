@@ -10,27 +10,21 @@ const {
 	DB_PATH = './db/database.db'
 } = process.env;
 
-const API_URL = 'http://credentials-api.generalassemb.ly/4576f55f-c427-4cfc-a11c-5bfe914ca6c1'
+// test sequalize
+const sequelize = new Sequelize({
+	dialect: 'sqlite',
+	storage: DB_PATH
+});
 
-var sequelize = new Sequelize('database', 'username', 'password', {
-	  host: 'localhost',
-	  dialect: 'mysql'|'mariadb'|'sqlite'|'postgres'|'mssql',
-
-	  pool: {
-	    max: 5,
-	    min: 0,
-	    idle: 10000
-	  },
-
-	  // SQLite only
-	  storage: 'path/to/database.sqlite'
+sequelize
+	.authenticate()
+	.then(() => {
+		console.log('Connection has been established successfully.');
+	})
+	.catch(err => {
+		console.error('Unable to connect to the database:', err);
 	});
 
-	// Or you can simply use a connection uri
-	var sequelize = new Sequelize('postgres://user:pass@example.com:5432/dbname');
-
-
-)
 // START SERVER
 Promise.resolve()
 	.then(() =>
