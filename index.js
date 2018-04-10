@@ -7,7 +7,8 @@ const sqlite = require('sqlite'),
 const {
 	PORT = 3000,
 	NODE_ENV = 'development',
-	DB_PATH = './db/database.db'
+	DB_PATH = './db/database.db',
+	API_URL = 'http://credentials-api.generalassemb.ly/4576f55f-c427-4cfc-a11c-5bfe914ca6c1'
 } = process.env;
 
 // test sequalize
@@ -36,7 +37,16 @@ Promise.resolve()
 
 // ROUTES
 app.get('/films/:id/recommendations', getFilmRecommendations);
-app.get('/', (req, res) => res.send('Hello World!'));
+app.get('*', (req, res, next) => {
+	const error = new Error('invalid route');
+	error.httpStatusCode = 404;
+	return next(error);
+});
+
+app.use(function(err, req, res, next) {
+	console.error(err.stack);
+	res.status(err.httpStatusCode).send({ message: 'key missing' });
+});
 
 // ROUTE HANDLER
 function getFilmRecommendations(req, res) {
