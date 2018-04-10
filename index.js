@@ -103,27 +103,36 @@ function getFilmRecommendations(req, res, next) {
 		if (offset >= 0) response.meta.offset = offset;
 	}
 
-	// FETCH FILM FROM LOCAL DB
+	// FETCH FILM GENRE FROM LOCAL DB
 	Film.findById(req.params.id).then(film => {
 		if (film === null) {
 			const error = new Error('no film with that id');
 			error.httpStatusCode = 422;
 			return next(error);
 		}
-		Genre.findById(film.genre_id).then(genre => {
-			if (genre === null) {
-				const error = new Error('something is wrong with the genre lookup');
-				error.httpStatusCode = 422;
-				return next(error);
-			}
-			console.log(genre.dataValues);
-			response.recommendations.push(genre.dataValues);
-			res.json(response);
-		});
+		Genre.findById(film.genre_id)
+			.then(genre => {
+				if (genre === null) {
+					const error = new Error('something is wrong with the genre lookup');
+					error.httpStatusCode = 422;
+					return next(error);
+				}
+				return genre.dataValues;
+			})
+			.then(genreObject => {
+				// movies in local db with genreId
+				// from movies, select those for which:
+				// api call's reviews output has:
+				//  count of reviews >=5, average >= 4.0, 15yrsminusparent < date < 15yrsplusparent
+				// order by ID
+				// output to result paginated by offset and limited per meta info
+			});
 	});
 }
 
 // ERROR HANDLING MIDDLEWARE
+// note that i would probably implement NODE_ENV dependent output if specs were different
+// (HTML w/ stack trace for development, json for production)
 app.use(function(err, req, res, next) {
 	res.status(err.httpStatusCode || 500);
 	res.send({ message: err.message || 'key missing' });
