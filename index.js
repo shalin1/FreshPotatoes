@@ -109,40 +109,44 @@ function getFilmRecommendations(req, res, next) {
 			error.httpStatusCode = 422;
 			return next(error);
 		}
-		let dateRangeStart = new Date(film.release_date);
-		dateRangeStart.setFullYear(-15 + dateRangeStart.getFullYear());
-		let dateRangeEnd = new Date(film.release_date);
-		dateRangeEnd.setFullYear(15 + dateRangeEnd.getFullYear());
+		Genre.findById(film.genre_id).then(genre => {
+			if (genre === null) {
+				const error = new Error('genre lookup error');
+				error.httpStatusCode = 422;
+				return next(error);
+			}
+			let dateRangeStart = new Date(film.release_date);
+			dateRangeStart.setFullYear(-15 + dateRangeStart.getFullYear());
+			let dateRangeEnd = new Date(film.release_date);
+			dateRangeEnd.setFullYear(15 + dateRangeEnd.getFullYear());
+			return Film.findAll({
+				attributes: ['id', 'title', 'release_date'],
+				where: {
+					genre_id: genre.id,
+					release_date: { $between: [dateRangeStart, dateRangeEnd] }
+				},
+				raw: true
+			}).then(films => {
+				const ids = films.map(film => film.id);
 
-		Film.findAll({
-			attributes: ['id'],
-			where: {
-				genre_id: film.genre_id,
-				release_date: { $between: [dateRangeStart, dateRangeEnd] }
-			},
-			raw: true
-		}).then(films => {
-			const ids = films.map(film => film.id);
+				// REQUEST REVIEWS BLOB FOR CANDIDATES FROM 3RD PARTY API
+				const sortedRecommendationIds = request(
+					{ url: API_URL + '?films=' + ids.join(',') },
+					(err, res, body) => {
+						if (err) {
+							return next(err);
+						}
+						// FILTER RECOMMENDATIONS PER SPEC
+						const averageRating = film => {
+							let ratingsSum = 0;
+							film.reviews.forEach(review => {
+								ratingsSum += review.rating;
+							});
+							return Math.round(ratingsSum / film.reviews.length * 10, 1) / 10;
+						};
 
-			// REQUEST REVIEWS BLOB FOR CANDIDATES FROM 3RD PARTY API
-			const sortedRecommendationIds = request(
-				{ url: API_URL + '?films=' + ids.join(',') },
-				(err, res, body) => {
-					if (err) {
-						return next(err);
-					}
-					// FILTER RECOMMENDATIONS PER SPEC
-					const averageRating = film => {
-						let ratingsSum = 0;
-						film.reviews.forEach(review => {
-							ratingsSum += review.rating;
-						});
-						return ratingsSum / film.reviews.length;
-					};
-
-					const allFilms = JSON.parse(body);
-					console.log(
-						allFilms
+						const allGenreReviews = JSON.parse(body);
+						let recommendations = allGenreReviews
 							.filter(
 								film => film.reviews.length >= 5 && averageRating(film) > 4.0
 							)
@@ -154,10 +158,21 @@ function getFilmRecommendations(req, res, next) {
 									reviews: film.reviews.length
 								};
 							})
-							.sort((a, b) => a.id - b.id)
-					);
-				}
-			);
+							.sort((a, b) => a.id - b.id);
+						recommendations.forEach(recco => {
+							let obj = films.find(film => {
+								return recco.id === film.id;
+							});
+							// console.log(obj);
+							recco.title = obj.title;
+							recco.releaseDate = obj.release_date;
+							recco.genre = genre.name;
+						});
+						response.recommendations = recommendations;
+						console.log(response);
+					}
+				);
+			});
 		});
 	});
 }
