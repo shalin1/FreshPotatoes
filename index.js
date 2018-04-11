@@ -110,23 +110,33 @@ function getFilmRecommendations(req, res, next) {
 			error.httpStatusCode = 422;
 			return next(error);
 		}
-		Genre.findById(film.genre_id)
-			.then(genre => {
-				if (genre === null) {
-					const error = new Error('something is wrong with the genre lookup');
-					error.httpStatusCode = 422;
-					return next(error);
+		Film.findAll({
+			attributes: ['id'],
+			where: {
+				genre_id: film.genre_id
+			},
+			raw: true
+		}).then(films => {
+			const ids = films.map(film => film.id);
+			request(
+				{
+					url: API_URL + '?films=' + JSON.stringify(ids).slice(1, -1)
+				},
+				(err, res, body) => {
+					if (err) {
+						return next(err);
+					} else if (res && body) {
+						console.log(body);
+					}
 				}
-				return genre.dataValues;
-			})
-			.then(genreObject => {
-				// movies in local db with genreId
-				// from movies, select those for which:
-				// api call's reviews output has:
-				//  count of reviews >=5, average >= 4.0, 15yrsminusparent < date < 15yrsplusparent
-				// order by ID
-				// output to result paginated by offset and limited per meta info
-			});
+			);
+		});
+		// movies in local db with genreId
+		// from movies, select those for which:
+		// api call's reviews output has:
+		//  count of reviews >=5, average >= 4.0, 15yrsminusparent < date < 15yrsplusparent
+		// order by ID
+		// output to result paginated by offset and limited per meta info
 	});
 }
 
