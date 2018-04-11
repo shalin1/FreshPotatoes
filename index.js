@@ -103,13 +103,14 @@ function getFilmRecommendations(req, res, next) {
 		if (offset >= 0) response.meta.offset = offset;
 	}
 
-	// FETCH FILM GENRE FROM LOCAL DB
+	// FETCH FILM IDS WITH MATCHING GENRE FROM LOCAL DB
 	Film.findById(req.params.id).then(film => {
 		if (film === null) {
 			const error = new Error('no film with that id');
 			error.httpStatusCode = 422;
 			return next(error);
 		}
+		const releaseDate = film.release_date;
 		Film.findAll({
 			attributes: ['id'],
 			where: {
@@ -118,6 +119,8 @@ function getFilmRecommendations(req, res, next) {
 			raw: true
 		}).then(films => {
 			const ids = films.map(film => film.id);
+
+			// REQUEST REVIEWS BLOB FROM 3RD PARTY API
 			request(
 				{
 					url: API_URL + '?films=' + JSON.stringify(ids).slice(1, -1)
@@ -126,7 +129,22 @@ function getFilmRecommendations(req, res, next) {
 					if (err) {
 						return next(err);
 					} else if (res && body) {
-						console.log(body);
+						// WINNOW DOWN RECOMMENDATIONS PER SPEC
+						const allFilms = JSON.parse(body);
+						const fiveReviewFilms = allFilms.filter(
+							film => film.reviews.length >= 5
+						);
+						const averageRating = film => {
+							let ratingsSum = 0;
+							film.reviews.forEach(review => {
+								ratingsSum += review.rating;
+							});
+							return ratingsSum / film.reviews.length;
+						};
+						const highlyRatedFilms = fiveReviewFilms.filter(
+							film => averageRating(film) >= 4.0
+						);
+						console.log(highlyRatedFilms.map(film => film.film_id).sort());
 					}
 				}
 			);
