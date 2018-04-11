@@ -70,7 +70,7 @@ function getFilmRecommendations(req, res, next) {
 		recommendations: [],
 		meta: {
 			limit: 10,
-			offset: 1
+			offset: 0
 		}
 	};
 
@@ -109,6 +109,7 @@ function getFilmRecommendations(req, res, next) {
 			error.httpStatusCode = 422;
 			return next(error);
 		}
+
 		Genre.findById(film.genre_id).then(genre => {
 			if (genre === null) {
 				const error = new Error('genre lookup error');
@@ -119,6 +120,7 @@ function getFilmRecommendations(req, res, next) {
 			dateRangeStart.setFullYear(-15 + dateRangeStart.getFullYear());
 			let dateRangeEnd = new Date(film.release_date);
 			dateRangeEnd.setFullYear(15 + dateRangeEnd.getFullYear());
+
 			return Film.findAll({
 				attributes: ['id', 'title', 'release_date'],
 				where: {
@@ -126,8 +128,8 @@ function getFilmRecommendations(req, res, next) {
 					release_date: { $between: [dateRangeStart, dateRangeEnd] }
 				},
 				raw: true
-			}).then(films => {
-				const ids = films.map(film => film.id);
+			}).then(allFilms => {
+				const ids = allFilms.map(film => film.id);
 
 				// REQUEST REVIEWS BLOB FOR CANDIDATES FROM 3RD PARTY API
 				const sortedRecommendationIds = request(
@@ -142,39 +144,45 @@ function getFilmRecommendations(req, res, next) {
 							film.reviews.forEach(review => {
 								ratingsSum += review.rating;
 							});
-							return Math.round(ratingsSum / film.reviews.length * 10, 1) / 10;
+							return (
+								Math.round(ratingsSum / film.reviews.length * 100, 1) / 100
+							);
 						};
 
-						const allGenreReviews = JSON.parse(body);
-						let recommendations = allGenreReviews
+						let allReviews = JSON.parse(body);
+						allReviews
 							.filter(
 								film => film.reviews.length >= 5 && averageRating(film) > 4.0
 							)
 							// ADD RELEVANT API DATA TO RESPONSE
 							.map(film => {
-								return {
+								let dbData = allFilms.find(data => {
+									// console.log(`film.id:${film.id},data.id:${data.id}`);
+									return film.film_id === data.id;
+								});
+								response.recommendations.push({
 									id: film.film_id,
+									title: dbData.title,
+									releaseDate: dbData.release_date,
+									genre: genre.name,
 									averageRating: averageRating(film),
 									reviews: film.reviews.length
-								};
+								});
 							})
 							.sort((a, b) => a.id - b.id);
-						recommendations.forEach(recco => {
-							let obj = films.find(film => {
-								return recco.id === film.id;
-							});
-							// console.log(obj);
-							recco.title = obj.title;
-							recco.releaseDate = obj.release_date;
-							recco.genre = genre.name;
-						});
-						response.recommendations = recommendations;
-						console.log(response);
+						createResponse();
 					}
 				);
 			});
 		});
 	});
+	const createResponse = () => {
+		// handle offset/limit here
+		sendResponse();
+	};
+	const sendResponse = () => {
+		res.status(200).json(response);
+	};
 }
 
 // ERROR HANDLING MIDDLEWARE
