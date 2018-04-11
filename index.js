@@ -66,7 +66,6 @@ app.get('*', (req, res, next) => {
 
 // ROUTE HANDLER
 function getFilmRecommendations(req, res, next) {
-	// DEFAULTS / SHAPE STATE
 	let response = {
 		recommendations: [],
 		meta: {
@@ -82,7 +81,7 @@ function getFilmRecommendations(req, res, next) {
 		return next(error);
 	}
 
-	// LIMIT/OFFSET ERROR CATCHING + SET
+	// LIMIT/OFFSET SANITIZATION + SETTING
 	if (req.query.limit) {
 		let limit = parseInt(req.query.limit, 10);
 		if (isNaN(limit)) {
@@ -103,58 +102,63 @@ function getFilmRecommendations(req, res, next) {
 		if (offset >= 0) response.meta.offset = offset;
 	}
 
-	// FETCH FILM IDS WITH MATCHING GENRE FROM LOCAL DB
+	// FETCH FILM IDS WITH MATCHING GENRE WITHIN DATE RANGE FROM LOCAL DB
 	Film.findById(req.params.id).then(film => {
 		if (film === null) {
 			const error = new Error('no film with that id');
 			error.httpStatusCode = 422;
 			return next(error);
 		}
-		const releaseDate = film.release_date;
+		let dateRangeStart = new Date(film.release_date);
+		dateRangeStart.setFullYear(-15 + dateRangeStart.getFullYear());
+		let dateRangeEnd = new Date(film.release_date);
+		dateRangeEnd.setFullYear(15 + dateRangeEnd.getFullYear());
+
 		Film.findAll({
 			attributes: ['id'],
 			where: {
-				genre_id: film.genre_id
+				genre_id: film.genre_id,
+				release_date: { $between: [dateRangeStart, dateRangeEnd] }
 			},
 			raw: true
 		}).then(films => {
 			const ids = films.map(film => film.id);
 
-			// REQUEST REVIEWS BLOB FROM 3RD PARTY API
-			request(
-				{
-					url: API_URL + '?films=' + JSON.stringify(ids).slice(1, -1)
-				},
+			// REQUEST REVIEWS BLOB FOR CANDIDATES FROM 3RD PARTY API
+			const sortedRecommendationIds = request(
+				{ url: API_URL + '?films=' + ids.join(',') },
 				(err, res, body) => {
 					if (err) {
 						return next(err);
-					} else if (res && body) {
-						// WINNOW DOWN RECOMMENDATIONS PER SPEC
-						const allFilms = JSON.parse(body);
-						const fiveReviewFilms = allFilms.filter(
-							film => film.reviews.length >= 5
-						);
-						const averageRating = film => {
-							let ratingsSum = 0;
-							film.reviews.forEach(review => {
-								ratingsSum += review.rating;
-							});
-							return ratingsSum / film.reviews.length;
-						};
-						const highlyRatedFilms = fiveReviewFilms.filter(
-							film => averageRating(film) >= 4.0
-						);
-						console.log(highlyRatedFilms.map(film => film.film_id).sort());
 					}
+					// FILTER RECOMMENDATIONS PER SPEC
+					const averageRating = film => {
+						let ratingsSum = 0;
+						film.reviews.forEach(review => {
+							ratingsSum += review.rating;
+						});
+						return ratingsSum / film.reviews.length;
+					};
+
+					const allFilms = JSON.parse(body);
+					console.log(
+						allFilms
+							.filter(
+								film => film.reviews.length >= 5 && averageRating(film) > 4.0
+							)
+							// ADD RELEVANT API DATA TO RESPONSE
+							.map(film => {
+								return {
+									id: film.film_id,
+									averageRating: averageRating(film),
+									reviews: film.reviews.length
+								};
+							})
+							.sort((a, b) => a.id - b.id)
+					);
 				}
 			);
 		});
-		// movies in local db with genreId
-		// from movies, select those for which:
-		// api call's reviews output has:
-		//  count of reviews >=5, average >= 4.0, 15yrsminusparent < date < 15yrsplusparent
-		// order by ID
-		// output to result paginated by offset and limited per meta info
 	});
 }
 
