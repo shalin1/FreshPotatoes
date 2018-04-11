@@ -177,7 +177,11 @@ function getFilmRecommendations(req, res, next) {
 		});
 	});
 	const createResponse = () => {
-		// handle offset/limit here
+		response.recommendations.splice(0, response.meta.offset);
+		response.recommendations.splice(
+			response.meta.limit,
+			response.recommendations.length - response.meta.limit
+		);
 		sendResponse();
 	};
 	const sendResponse = () => {
