@@ -75,14 +75,14 @@ function getFilmRecommendations(req, res, next) {
     },
   };
 
-  // Sanitize query's movie_id
+  // Sanitize :film_id param
   if (isNaN(parseInt(req.params.id, 10))) {
     const error = new Error('invalid movie id');
     error.httpStatusCode = 422;
     return next(error);
   }
 
-  // Sanitize + set limit & query
+  // Sanitize + set limit & offset
   if (req.query.limit) {
     let limit = parseInt(req.query.limit, 10);
     if (isNaN(limit)) {
@@ -176,7 +176,7 @@ function getFilmRecommendations(req, res, next) {
             createResponse();
           }
         );
-      });
+      }).catch(function(err){next(err)});
     });
   });
 
